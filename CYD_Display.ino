@@ -39,10 +39,9 @@
 //  Struttura dati ESP-NOW
 // =============================================================================
 struct ESPNowData {
-    float    temperatura;
-    float    umidita;
-    float    pressione;
-    int16_t  batteria_mv;
+    uint16_t batteria_mv;
+    uint8_t  batteria_soc;
+    int8_t   batteria_crate;
     uint8_t  nodeId;
     int8_t   rssi;
     uint32_t packetCount;
@@ -55,8 +54,7 @@ static ESPNowData     dispData = {};
 
 // ── LVGL widget handles ───────────────────────────────────────────────────────
 static lv_obj_t *label_node, *label_rssi_txt, *bar_rssi;
-static lv_obj_t *label_temp, *label_hum, *label_press;
-static lv_obj_t *label_batt, *bar_batt;
+static lv_obj_t *label_soc, *label_volt, *label_crate, *bar_batt;
 static lv_obj_t *label_pkt, *label_err, *label_status, *label_uptime;
 
 // ── Hardware ──────────────────────────────────────────────────────────────────
@@ -248,7 +246,7 @@ lv_color_t rssiCol(int8_t r) {
 }
 
 // =============================================================================
-//  Build UI — 320x240 landscape, 2 colonne
+//  Build UI — 320x240 landscape, focus batteria
 // =============================================================================
 void buildUI() {
     lv_obj_t *scr = lv_scr_act();
@@ -276,33 +274,29 @@ void buildUI() {
     lv_obj_set_style_bg_color(bar_rssi, lv_color_hex(0x334466), 0);
     lv_obj_set_style_bg_color(bar_rssi, lv_color_hex(0xFF1744), LV_PART_INDICATOR);
 
-    // Cards 2x2 — y=38 h1=82 y2=122 h2=82 footer=206
-    const int CX1=3, CX2=163, CW=154, RY1=38, CH1=82, RY2=122, CH2=82;
+    // Battery card: full width, y=38..202 (h=164)
+    lv_obj_t *cBatt = makeCard(scr, 6, 38, SCREEN_W-12, 164, COL_BATT);
+    makeLbl(cBatt, "BATTERIA", &lv_font_montserrat_14, COL_BATT, LV_ALIGN_TOP_MID, 0, 0);
 
-    lv_obj_t *cT = makeCard(scr, CX1, RY1, CW, CH1, COL_TEMP);
-    makeLbl(cT, "TEMPERATURA", &lv_font_montserrat_14, COL_TEMP, LV_ALIGN_TOP_MID, 0, 0);
-    label_temp = makeLbl(cT, "--", &lv_font_montserrat_24, COL_WHITE, LV_ALIGN_LEFT_MID, 0, 4);
-    makeLbl(cT, "C", &lv_font_montserrat_14, COL_GRAY, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+    // SOC big number a sinistra + "%" piccolo
+    label_soc = makeLbl(cBatt, "--", &lv_font_montserrat_24, COL_WHITE, LV_ALIGN_LEFT_MID, 20, -10);
+    makeLbl(cBatt, "%", &lv_font_montserrat_14, COL_GRAY, LV_ALIGN_LEFT_MID, 95, -2);
 
-    lv_obj_t *cH = makeCard(scr, CX2, RY1, CW, CH1, COL_HUM);
-    makeLbl(cH, "UMIDITA'", &lv_font_montserrat_14, COL_HUM, LV_ALIGN_TOP_MID, 0, 0);
-    label_hum = makeLbl(cH, "--", &lv_font_montserrat_24, COL_WHITE, LV_ALIGN_LEFT_MID, 0, 4);
-    makeLbl(cH, "%", &lv_font_montserrat_14, COL_GRAY, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+    // Tensione a destra + "V" piccolo
+    label_volt = makeLbl(cBatt, "-.---", &lv_font_montserrat_24, COL_WHITE, LV_ALIGN_RIGHT_MID, -40, -10);
+    makeLbl(cBatt, "V", &lv_font_montserrat_14, COL_GRAY, LV_ALIGN_RIGHT_MID, -15, -2);
 
-    lv_obj_t *cP = makeCard(scr, CX1, RY2, CW, CH2, COL_PRESS);
-    makeLbl(cP, "PRESSIONE", &lv_font_montserrat_14, COL_PRESS, LV_ALIGN_TOP_MID, 0, 0);
-    label_press = makeLbl(cP, "--", &lv_font_montserrat_24, COL_WHITE, LV_ALIGN_LEFT_MID, 0, 4);
-    makeLbl(cP, "hPa", &lv_font_montserrat_14, COL_GRAY, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
-
-    lv_obj_t *cB = makeCard(scr, CX2, RY2, CW, CH2, COL_BATT);
-    makeLbl(cB, "BATTERIA", &lv_font_montserrat_14, COL_BATT, LV_ALIGN_TOP_MID, 0, 0);
-    label_batt = makeLbl(cB, "---- mV", &lv_font_montserrat_24, COL_WHITE, LV_ALIGN_LEFT_MID, 0, 4);
-    bar_batt = lv_bar_create(cB);
-    lv_obj_set_size(bar_batt, CW-12, 6);
-    lv_obj_align(bar_batt, LV_ALIGN_BOTTOM_MID, 0, -2);
-    lv_bar_set_range(bar_batt, 3000, 4200); lv_bar_set_value(bar_batt, 3000, LV_ANIM_OFF);
+    // Bar SOC
+    bar_batt = lv_bar_create(cBatt);
+    lv_obj_set_size(bar_batt, SCREEN_W-50, 10);
+    lv_obj_align(bar_batt, LV_ALIGN_CENTER, 0, 35);
+    lv_bar_set_range(bar_batt, 0, 100);
+    lv_bar_set_value(bar_batt, 0, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(bar_batt, lv_color_hex(0x334466), 0);
     lv_obj_set_style_bg_color(bar_batt, COL_BATT, LV_PART_INDICATOR);
+
+    // Charge rate sotto la bar
+    label_crate = makeLbl(cBatt, "--", &lv_font_montserrat_14, COL_GRAY, LV_ALIGN_BOTTOM_MID, 0, -2);
 
     // Footer h=34
     lv_obj_t *foot = lv_obj_create(scr);
@@ -333,15 +327,24 @@ void updateUI(const ESPNowData &d) {
     lv_bar_set_value(bar_rssi, map(constrain((int)d.rssi,-110,-30),-110,-30,0,100), LV_ANIM_ON);
     lv_obj_set_style_bg_color(bar_rssi, rssiCol(d.rssi), LV_PART_INDICATOR);
 
-    int t_int=(int)d.temperatura, t_dec=abs((int)(d.temperatura*10)%10);
-    int h_int=(int)d.umidita,     h_dec=abs((int)(d.umidita*10)%10);
-    snprintf(buf, sizeof(buf), "%d.%d", t_int, t_dec); lv_label_set_text(label_temp,  buf);
-    snprintf(buf, sizeof(buf), "%d.%d", h_int, h_dec); lv_label_set_text(label_hum,   buf);
-    snprintf(buf, sizeof(buf), "%d",    (int)d.pressione); lv_label_set_text(label_press, buf);
-    snprintf(buf, sizeof(buf), "%d mV", d.batteria_mv);    lv_label_set_text(label_batt,  buf);
+    snprintf(buf, sizeof(buf), "%u", d.batteria_soc);
+    lv_label_set_text(label_soc, buf);
 
-    lv_bar_set_value(bar_batt, d.batteria_mv, LV_ANIM_ON);
-    lv_color_t bc = (d.batteria_mv>3700)?COL_BATT:(d.batteria_mv>3400)?lv_color_hex(0xFFD600):lv_color_hex(0xFF1744);
+    int v_int = d.batteria_mv / 1000;
+    int v_dec = d.batteria_mv % 1000;
+    snprintf(buf, sizeof(buf), "%d.%03d", v_int, v_dec);
+    lv_label_set_text(label_volt, buf);
+
+    if (d.batteria_crate >= 0)
+        snprintf(buf, sizeof(buf), "carica: +%d %%/h", (int)d.batteria_crate);
+    else
+        snprintf(buf, sizeof(buf), "scarica: %d %%/h", (int)d.batteria_crate);
+    lv_label_set_text(label_crate, buf);
+
+    lv_bar_set_value(bar_batt, d.batteria_soc, LV_ANIM_ON);
+    lv_color_t bc = (d.batteria_soc > 50) ? COL_BATT
+                  : (d.batteria_soc > 20) ? lv_color_hex(0xFFD600)
+                  : lv_color_hex(0xFF1744);
     lv_obj_set_style_bg_color(bar_batt, bc, LV_PART_INDICATOR);
 
     snprintf(buf, sizeof(buf), "PKT:%lu", (unsigned long)d.packetCount);

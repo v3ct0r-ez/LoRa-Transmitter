@@ -25,10 +25,9 @@
 
 struct SensorPayload {
     uint8_t  nodeId;
-    float    temperatura;
-    float    umidita;
-    float    pressione;
-    int16_t  batteria_mv;
+    uint16_t batteria_mv;        // tensione cella in mV (MAX17048)
+    uint8_t  batteria_soc;       // 0-100 % (MAX17048)
+    int8_t   batteria_crate;     // %/h, +carica / -scarica (MAX17048)
     uint32_t timestamp_ms;
 } __attribute__((packed));
 
@@ -45,10 +44,9 @@ static const uint8_t CYD_MAC[6] = { 0x88, 0x13, 0xBF, 0x24, 0xB4, 0x14 };
 
 // Struttura dati ESP-NOW — identica nel CYD
 struct ESPNowData {
-    float    temperatura;
-    float    umidita;
-    float    pressione;
-    int16_t  batteria_mv;
+    uint16_t batteria_mv;
+    uint8_t  batteria_soc;
+    int8_t   batteria_crate;
     uint8_t  nodeId;
     int8_t   rssi;
     uint32_t packetCount;
@@ -96,15 +94,14 @@ static RxStats stats;
 void sendToDisplay(const SensorPayload &p, int rssi) {
     if (!espnowReady) return;
     ESPNowData d;
-    d.temperatura = p.temperatura;
-    d.umidita     = p.umidita;
-    d.pressione   = p.pressione;
-    d.batteria_mv = p.batteria_mv;
-    d.nodeId      = p.nodeId;
-    d.rssi        = (int8_t)rssi;
-    d.packetCount = stats.ok;
-    uint32_t tot  = stats.ok + stats.errori;
-    d.errorRate   = tot > 0 ? (uint8_t)((float)stats.errori / tot * 100.0f) : 0;
+    d.batteria_mv    = p.batteria_mv;
+    d.batteria_soc   = p.batteria_soc;
+    d.batteria_crate = p.batteria_crate;
+    d.nodeId         = p.nodeId;
+    d.rssi           = (int8_t)rssi;
+    d.packetCount    = stats.ok;
+    uint32_t tot     = stats.ok + stats.errori;
+    d.errorRate      = tot > 0 ? (uint8_t)((float)stats.errori / tot * 100.0f) : 0;
     esp_err_t result = esp_now_send(CYD_MAC, (uint8_t*)&d, sizeof(ESPNowData));
     if (result != ESP_OK) { Serial.print("[ESP-NOW] Send error: "); Serial.println(result); }
 }
@@ -323,9 +320,8 @@ void loop() {
 
     // Validazione
     bool valido = payload.nodeId > 0
-               && payload.temperatura > -40.0f && payload.temperatura < 85.0f
-               && payload.umidita >= 0.0f      && payload.umidita <= 100.0f
-               && payload.batteria_mv > 0      && payload.batteria_mv < 5000;
+               && payload.batteria_mv > 0 && payload.batteria_mv < 5000
+               && payload.batteria_soc <= 100;
 
     stats.ok++;
     stats.last_rssi  = rssi;
@@ -427,9 +423,9 @@ bool waitAux(uint32_t timeoutMs) {
 void uartFlushRx() { delay(10); while (Serial2.available()) Serial2.read(); }
 
 void printPayload(const SensorPayload &p, int rssi) {
-    Serial.printf("[RX #%lu] Node=%d | T=%.1f°C | H=%.1f%% | P=%.1fhPa | Batt=%dmV | t=%lums",
-                  stats.ok, p.nodeId, p.temperatura, p.umidita,
-                  p.pressione, p.batteria_mv, (unsigned long)p.timestamp_ms);
+    Serial.printf("[RX #%lu] Node=%d | Batt=%umV (%u%%, %+d%%/h) | t=%lums",
+                  stats.ok, p.nodeId, p.batteria_mv, p.batteria_soc,
+                  p.batteria_crate, (unsigned long)p.timestamp_ms);
     if (LORA_RSSI_BYTE) Serial.printf(" | RSSI=%ddBm", rssi);
     Serial.println();
 }

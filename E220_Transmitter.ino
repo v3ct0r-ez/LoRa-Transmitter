@@ -31,6 +31,10 @@
 #define PIN_RX2         16
 #define PIN_TX2         17
 
+// I2C per MAX17048 (fuel gauge batteria)
+#define PIN_SDA         21
+#define PIN_SCL         22
+
 // ╔═══════════════════════════════════════════════════════════════════════════╗
 // ║                    PARAMETRI MODULO LORA                                 ║
 // ║  Modificare solo questi valori. TX e RX devono condividere               ║
@@ -158,16 +162,26 @@ void aesCtr(uint8_t* data, size_t len, uint32_t nonce) {
     mbedtls_aes_free(&ctx);
 }
 
+// ╔═══════════════════════════════════════════════════════════════════════════╗
+// ║                    FUEL GAUGE MAX17048                                   ║
+// ║  Misura tensione, SOC% e tasso carica/scarica della batteria             ║
+// ║  che alimenta TX + fototrappola. I2C 0x36.                               ║
+// ╚═══════════════════════════════════════════════════════════════════════════╝
+#include <Wire.h>
+#include "Adafruit_MAX1704X.h"
+
+static Adafruit_MAX17048 maxlipo;
+static bool maxReady = false;
+
 // =============================================================================
 //  Struttura dati — __attribute__((packed)) = nessun padding
 //  DEVE essere identica nel ricevitore.
 // =============================================================================
 struct SensorPayload {
     uint8_t  nodeId;
-    float    temperatura;
-    float    umidita;
-    float    pressione;
-    int16_t  batteria_mv;
+    uint16_t batteria_mv;        // tensione cella in mV (MAX17048)
+    uint8_t  batteria_soc;       // 0-100 % (MAX17048)
+    int8_t   batteria_crate;     // %/h, +carica / -scarica (MAX17048)
     uint32_t timestamp_ms;
 } __attribute__((packed));
 
@@ -197,6 +211,15 @@ void setup() {
     pinMode(PIN_M0, OUTPUT); pinMode(PIN_M1, OUTPUT); pinMode(PIN_AUX, INPUT);
     digitalWrite(PIN_M0, LOW); digitalWrite(PIN_M1, LOW);
 
+    Wire.begin(PIN_SDA, PIN_SCL);
+    if (maxlipo.begin(&Wire)) {
+        maxReady = true;
+        Serial.printf("[OK] MAX17048 chip=0x%04X ver=0x%04X\n",
+                      maxlipo.getChipID(), maxlipo.getICVersion());
+    } else {
+        Serial.println("[WARN] MAX17048 non trovato (I2C 0x36)");
+    }
+
     Serial2.begin(LORA_UART_BAUD, SERIAL_8N1, PIN_RX2, PIN_TX2);
     delay(500);
 
@@ -221,12 +244,15 @@ void loop() {
         lastTx = millis(); return;
     }
 
-    SensorPayload payload;
-    payload.nodeId       = 1;
-    payload.temperatura  = 22.5f + (float)random(-20, 20) / 10.0f;
-    payload.umidita      = 55.0f + (float)random(-50, 50) / 10.0f;
-    payload.pressione    = 1013.25f + (float)random(-100, 100) / 10.0f;
-    payload.batteria_mv  = 3700 - (int16_t)(txCount * 2);
+    SensorPayload payload = {};
+    payload.nodeId = 1;
+    if (maxReady) {
+        payload.batteria_mv    = (uint16_t)(maxlipo.cellVoltage() * 1000.0f);
+        int soc   = (int)(maxlipo.cellPercent() + 0.5f);
+        int crate = (int)maxlipo.chargeRate();
+        payload.batteria_soc   = (uint8_t)constrain(soc, 0, 100);
+        payload.batteria_crate = (int8_t)constrain(crate, -128, 127);
+    }
     payload.timestamp_ms = millis();
 
     if (sendPayload(payload)) {
@@ -363,7 +389,7 @@ bool waitAux(uint32_t timeoutMs) {
 void uartFlushRx() { delay(10); while (Serial2.available()) Serial2.read(); }
 
 void printPayload(const SensorPayload &p) {
-    Serial.printf("Node=%d  T=%.1f°C  H=%.1f%%  P=%.1fhPa  Batt=%dmV  t=%lums\n",
-                  p.nodeId, p.temperatura, p.umidita,
-                  p.pressione, p.batteria_mv, (unsigned long)p.timestamp_ms);
+    Serial.printf("Node=%d  Batt=%umV (%u%%, %+d%%/h)  t=%lums\n",
+                  p.nodeId, p.batteria_mv, p.batteria_soc,
+                  p.batteria_crate, (unsigned long)p.timestamp_ms);
 }

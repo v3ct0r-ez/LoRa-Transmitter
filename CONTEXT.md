@@ -51,16 +51,19 @@ AES_KEY: 2B7E151628AED2A6ABF7158809CF4F3C (mbedtls CTR, nonce=txCount)
 
 ## Strutture dati
 
-SensorPayload (19B, TX->RX via LoRa):
-  nodeId(1) + temperatura(4) + umidita(4) + pressione(4) + batteria_mv(2) + timestamp_ms(4)
+SensorPayload (9B, TX->RX via LoRa):
+  nodeId(1) + batteria_mv(2) + batteria_soc(1) + batteria_crate(1) + timestamp_ms(4)
 
 Pacchetto trasmesso (fixed mode):
   [DEST_H][DEST_L][CHAN] header routing consumato dal modulo
-  [nonce 4B][payload AES cifrato 19B][RSSI 1B] = 24 byte all'RX
+  [nonce 4B][payload AES cifrato 9B][RSSI 1B] = 14 byte all'RX
 
-ESPNowData (21B, RX->CYD via ESP-NOW):
-  temperatura(4) + umidita(4) + pressione(4) + batteria_mv(2) +
+ESPNowData (11B, RX->CYD via ESP-NOW):
+  batteria_mv(2) + batteria_soc(1) + batteria_crate(1) +
   nodeId(1) + rssi(1) + packetCount(4) + errorRate(1)
+
+I sensori reali (temp/umid/press) verranno aggiunti in futuro quando
+disponibili — per ora il payload trasporta solo telemetria batteria.
 
 ---
 
@@ -68,6 +71,15 @@ ESPNowData (21B, RX->CYD via ESP-NOW):
 
 TX (ESP32 classico): TX2=17, RX2=16, M0=4, M1=5, AUX=2
 RX (ESP32-S3):       TX2=17, RX2=18, M0=4, M1=5, AUX=6
+
+## MAX17048 fuel gauge (TX)
+
+I2C su ESP32 classico: SDA=21, SCL=22 (default Wire)
+Indirizzo: 0x36
+Libreria: Adafruit_MAX1704X (Adafruit_MAX17048 maxlipo)
+Letture: cellVoltage() V, cellPercent() %, chargeRate() %/h
+Alimentato dalla stessa cella che monitora (TX + fototrappola).
+Se non rilevato al boot: maxReady=false, campi batteria a 0.
 
 ---
 
@@ -119,9 +131,10 @@ ESP-NOW:
 Funzionante:
 - TX LoRa con fixed mode, AES-128 CTR, RSSI byte
 - RX LoRa con decifratura, inoltro ESP-NOW al CYD
-- CYD display con LVGL, dati aggiornati in tempo reale
+- CYD display con LVGL, UI focus batteria (SOC%, V, %/h)
 - Calibrazione touch 9 punti con feedback visivo
+- MAX17048 sul TX per telemetria batteria reale
 
 Da fare:
-- Sensori reali (ora dati simulati nel TX)
+- Sensori reali (temp/umid/press) — payload da estendere quando disponibili
 - Interazione touch sul display (pulsanti, menu)
