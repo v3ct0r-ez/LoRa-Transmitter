@@ -81,6 +81,15 @@ Letture: cellVoltage() V, cellPercent() %, chargeRate() %/h
 Alimentato dalla stessa cella che monitora (TX + fototrappola).
 Se non rilevato al boot: maxReady=false, campi batteria a 0.
 
+## RS485 → fototrappola (TX)
+
+UART1 su ESP32 classico: TX=26, RX=27, DE/RE=25
+Driver: MAX485-class half-duplex, DE+RE# legati insieme
+  (DE=HIGH → TX abilitato, DE=LOW → RX)
+Baud: 9600 8N1
+Helper: rs485_init(), rs485_send(data, len)
+Framing: non ancora definito — solo trasporto per ora.
+
 ---
 
 ## CYD ESP32-2432S028

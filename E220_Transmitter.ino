@@ -35,6 +35,12 @@
 #define PIN_SDA         21
 #define PIN_SCL         22
 
+// UART1 + RS485 verso fototrappola (MAX485-class, DE+RE# legati)
+#define PIN_RS485_RX    27
+#define PIN_RS485_TX    26
+#define PIN_RS485_DE    25
+#define RS485_BAUD      9600
+
 // ╔═══════════════════════════════════════════════════════════════════════════╗
 // ║                    PARAMETRI MODULO LORA                                 ║
 // ║  Modificare solo questi valori. TX e RX devono condividere               ║
@@ -173,6 +179,28 @@ void aesCtr(uint8_t* data, size_t len, uint32_t nonce) {
 static Adafruit_MAX17048 maxlipo;
 static bool maxReady = false;
 
+// ╔═══════════════════════════════════════════════════════════════════════════╗
+// ║                    RS485 (UART1) → FOTOTRAPPOLA                          ║
+// ║  Half-duplex con controllo DE/RE manuale. Solo trasporto: il framing     ║
+// ║  (start byte, CRC, protocollo) si aggiunge quando definito.              ║
+// ╚═══════════════════════════════════════════════════════════════════════════╝
+static HardwareSerial &RS485 = Serial1;
+
+void rs485_init() {
+    pinMode(PIN_RS485_DE, OUTPUT);
+    digitalWrite(PIN_RS485_DE, LOW);   // default in ricezione
+    RS485.begin(RS485_BAUD, SERIAL_8N1, PIN_RS485_RX, PIN_RS485_TX);
+}
+
+void rs485_send(const uint8_t *data, size_t len) {
+    digitalWrite(PIN_RS485_DE, HIGH);  // abilita driver TX
+    delayMicroseconds(50);             // settle linea
+    RS485.write(data, len);
+    RS485.flush();                     // attende fine shift-out ultimo bit
+    delayMicroseconds(50);
+    digitalWrite(PIN_RS485_DE, LOW);   // ritorno in RX
+}
+
 // =============================================================================
 //  Struttura dati — __attribute__((packed)) = nessun padding
 //  DEVE essere identica nel ricevitore.
@@ -219,6 +247,10 @@ void setup() {
     } else {
         Serial.println("[WARN] MAX17048 non trovato (I2C 0x36)");
     }
+
+    rs485_init();
+    Serial.printf("[OK] RS485 UART1 @ %d baud (TX=%d RX=%d DE=%d)\n",
+                  RS485_BAUD, PIN_RS485_TX, PIN_RS485_RX, PIN_RS485_DE);
 
     Serial2.begin(LORA_UART_BAUD, SERIAL_8N1, PIN_RX2, PIN_TX2);
     delay(500);
