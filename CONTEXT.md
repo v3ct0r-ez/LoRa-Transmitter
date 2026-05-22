@@ -90,6 +90,16 @@ Baud: 9600 8N1
 Helper: rs485_init(), rs485_send(data, len)
 Framing: non ancora definito — solo trasporto per ora.
 
+## OLED 0.96" 128x64 (TX)
+
+SSD1306 sullo stesso bus I2C del MAX17048 (SDA=21, SCL=22)
+Indirizzo: 0x3C (alcuni breakout 0x3D)
+Libreria: Adafruit_SSD1306 + Adafruit_GFX
+Layout: titolo+nodeId / Batt V / SOC% / rate %/h / TX-Err / uptime
+Aggiornamento: ad ogni ciclo TX (5s).
+I2C scanner al boot (scanI2C) stampa tutti gli indirizzi trovati
+  per diagnostica rapida.
+
 ---
 
 ## CYD ESP32-2432S028

@@ -41,6 +41,11 @@
 #define PIN_RS485_DE    25
 #define RS485_BAUD      9600
 
+// OLED 128x64 SSD1306 — diagnostica locale (stesso bus I2C del MAX17048)
+#define OLED_W          128
+#define OLED_H          64
+#define OLED_ADDR       0x3C
+
 // ╔═══════════════════════════════════════════════════════════════════════════╗
 // ║                    PARAMETRI MODULO LORA                                 ║
 // ║  Modificare solo questi valori. TX e RX devono condividere               ║
@@ -179,6 +184,76 @@ void aesCtr(uint8_t* data, size_t len, uint32_t nonce) {
 static Adafruit_MAX17048 maxlipo;
 static bool maxReady = false;
 
+// I2C scanner — diagnostica al boot
+void scanI2C() {
+    Serial.println("[I2C] scan bus:");
+    int found = 0;
+    for (uint8_t addr = 1; addr < 127; addr++) {
+        Wire.beginTransmission(addr);
+        if (Wire.endTransmission() == 0) {
+            Serial.printf("  0x%02X\n", addr);
+            found++;
+        }
+    }
+    Serial.printf("[I2C] %d device trovati\n", found);
+}
+
+// ╔═══════════════════════════════════════════════════════════════════════════╗
+// ║                    OLED 0.96" 128x64 — STATO LOCALE                      ║
+// ║  SSD1306 sullo stesso bus I2C del MAX17048.                              ║
+// ╚═══════════════════════════════════════════════════════════════════════════╝
+#include <Adafruit_SSD1306.h>
+#include <Adafruit_GFX.h>
+
+static Adafruit_SSD1306 oled(OLED_W, OLED_H, &Wire);
+static bool oledReady = false;
+
+void oled_init() {
+    if (oled.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR)) {
+        oledReady = true;
+        oled.clearDisplay();
+        oled.setTextColor(SSD1306_WHITE);
+        oled.setTextSize(1);
+        oled.setCursor(0, 0);
+        oled.println("LoRa TX");
+        oled.println("avvio...");
+        oled.display();
+    }
+}
+
+void oled_render(uint16_t mv, uint8_t soc, int8_t crate,
+                 uint8_t nodeId, uint32_t ok, uint32_t err) {
+    if (!oledReady) return;
+    char buf[24];
+    oled.clearDisplay();
+
+    snprintf(buf, sizeof(buf), "LoRa TX   N:%u", nodeId);
+    oled.setCursor(0, 0);  oled.print(buf);
+    oled.drawFastHLine(0, 10, OLED_W, SSD1306_WHITE);
+
+    snprintf(buf, sizeof(buf), "Batt %u.%03u V", mv/1000, mv%1000);
+    oled.setCursor(0, 14); oled.print(buf);
+
+    snprintf(buf, sizeof(buf), "SOC  %u %%", soc);
+    oled.setCursor(0, 24); oled.print(buf);
+
+    snprintf(buf, sizeof(buf), "Rate %+d %%/h", crate);
+    oled.setCursor(0, 34); oled.print(buf);
+
+    oled.drawFastHLine(0, 44, OLED_W, SSD1306_WHITE);
+
+    snprintf(buf, sizeof(buf), "TX:%lu Er:%lu",
+             (unsigned long)ok, (unsigned long)err);
+    oled.setCursor(0, 48); oled.print(buf);
+
+    uint32_t s = millis()/1000;
+    snprintf(buf, sizeof(buf), "%02lu:%02lu:%02lu",
+             s/3600, (s%3600)/60, s%60);
+    oled.setCursor(74, 56); oled.print(buf);
+
+    oled.display();
+}
+
 // ╔═══════════════════════════════════════════════════════════════════════════╗
 // ║                    RS485 (UART1) → FOTOTRAPPOLA                          ║
 // ║  Half-duplex con controllo DE/RE manuale. Solo trasporto: il framing     ║
@@ -240,6 +315,9 @@ void setup() {
     digitalWrite(PIN_M0, LOW); digitalWrite(PIN_M1, LOW);
 
     Wire.begin(PIN_SDA, PIN_SCL);
+    delay(100);
+    scanI2C();
+
     if (maxlipo.begin(&Wire)) {
         maxReady = true;
         Serial.printf("[OK] MAX17048 chip=0x%04X ver=0x%04X\n",
@@ -247,6 +325,10 @@ void setup() {
     } else {
         Serial.println("[WARN] MAX17048 non trovato (I2C 0x36)");
     }
+
+    oled_init();
+    Serial.println(oledReady ? "[OK] OLED SSD1306"
+                             : "[WARN] OLED non trovato (I2C 0x3C)");
 
     rs485_init();
     Serial.printf("[OK] RS485 UART1 @ %d baud (TX=%d RX=%d DE=%d)\n",
@@ -295,6 +377,10 @@ void loop() {
         txErrors++;
         Serial.printf("[TX ERRORE] totale: %lu\n", txErrors);
     }
+
+    oled_render(payload.batteria_mv, payload.batteria_soc,
+                payload.batteria_crate, payload.nodeId,
+                txCount, txErrors);
 
     lastTx = millis();
 }
