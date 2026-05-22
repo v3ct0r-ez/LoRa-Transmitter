@@ -184,6 +184,32 @@ void aesCtr(uint8_t* data, size_t len, uint32_t nonce) {
 static Adafruit_MAX17048 maxlipo;
 static bool maxReady = false;
 
+// Dump completo registri MAX17048 — diagnostica
+void dumpMaxRegisters() {
+    const uint8_t regs[]   = {0x02, 0x04, 0x06, 0x08, 0x0A,
+                              0x0C, 0x14, 0x16, 0x18, 0x1A};
+    const char *names[]    = {"VCELL", "SOC", "MODE", "VERSION", "HIBRT",
+                              "CONFIG", "VALRT", "CRATE", "VRESET/ID", "STATUS"};
+    Serial.println("[MAX17048] dump registri:");
+    for (size_t i = 0; i < sizeof(regs); i++) {
+        Wire.beginTransmission(0x36);
+        Wire.write(regs[i]);
+        if (Wire.endTransmission(false) != 0) continue;
+        Wire.requestFrom((uint8_t)0x36, (uint8_t)2);
+        uint16_t v = ((uint16_t)Wire.read() << 8) | Wire.read();
+        Serial.printf("  0x%02X %-10s = 0x%04X\n", regs[i], names[i], v);
+    }
+}
+
+// Disabilita hibernate scrivendo HIBRT=0xFFFF (da datasheet: chip
+// resta sempre in active mode, sample period 250ms invece di 45s).
+void maxDisableHibernate() {
+    Wire.beginTransmission(0x36);
+    Wire.write(0x0A);          // HIBRT
+    Wire.write(0xFF); Wire.write(0xFF);
+    Wire.endTransmission();
+}
+
 // I2C scanner — diagnostica al boot
 void scanI2C() {
     Serial.println("[I2C] scan bus:");
@@ -326,6 +352,9 @@ void setup() {
         // dopo certi avvii). Include quick-start integrato dal chip.
         maxlipo.reset();
         delay(500);   // 175ms POR debounce + margine ModelGauge
+        maxDisableHibernate();
+        delay(300);   // primo paio di sample in active mode
+        dumpMaxRegisters();
     } else {
         Serial.println("[WARN] MAX17048 non trovato (I2C 0x36)");
     }
