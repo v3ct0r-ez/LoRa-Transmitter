@@ -321,7 +321,7 @@ void setup() {
     if (maxlipo.begin(&Wire)) {
         maxReady = true;
         Serial.printf("[OK] MAX17048 chip=0x%04X ver=0x%04X\n",
-                      maxlipo.getChipID(), maxlipo.getICVersion());
+                      maxlipo.getChipID(), maxlipo.getICversion());
     } else {
         Serial.println("[WARN] MAX17048 non trovato (I2C 0x36)");
     }
