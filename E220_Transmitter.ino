@@ -201,12 +201,13 @@ void dumpMaxRegisters() {
     }
 }
 
-// Disabilita hibernate scrivendo HIBRT=0xFFFF (da datasheet: chip
-// resta sempre in active mode, sample period 250ms invece di 45s).
+// Disabilita hibernate scrivendo HIBRT=0x0000.
+// HibThr=0 → chip non entra mai in hibernate (CRATE non può essere
+// < 0%/hr in valore assoluto). Resta in active mode (sample 250ms).
 void maxDisableHibernate() {
     Wire.beginTransmission(0x36);
     Wire.write(0x0A);          // HIBRT
-    Wire.write(0xFF); Wire.write(0xFF);
+    Wire.write(0x00); Wire.write(0x00);
     Wire.endTransmission();
 }
 
@@ -353,7 +354,7 @@ void setup() {
         maxlipo.reset();
         delay(500);   // 175ms POR debounce + margine ModelGauge
         maxDisableHibernate();
-        delay(300);   // primo paio di sample in active mode
+        delay(1100);  // 4 sample (250ms × 4) in active mode per riempire l'averaging
         dumpMaxRegisters();
     } else {
         Serial.println("[WARN] MAX17048 non trovato (I2C 0x36)");
