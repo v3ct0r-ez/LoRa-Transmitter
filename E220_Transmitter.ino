@@ -322,6 +322,10 @@ void setup() {
         maxReady = true;
         Serial.printf("[OK] MAX17048 chip=0x%04X ver=0x%04X\n",
                       maxlipo.getChipID(), maxlipo.getICversion());
+        // POR via software: forza ricampionamento VCELL (default reg = stale
+        // dopo certi avvii). Include quick-start integrato dal chip.
+        maxlipo.reset();
+        delay(500);   // 175ms POR debounce + margine ModelGauge
     } else {
         Serial.println("[WARN] MAX17048 non trovato (I2C 0x36)");
     }
