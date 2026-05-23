@@ -80,6 +80,11 @@ Libreria: Adafruit_MAX1704X (Adafruit_MAX17048 maxlipo)
 Letture: cellVoltage() V, cellPercent() %, chargeRate() %/h
 Alimentato dalla stessa cella che monitora (TX + fototrappola).
 Se non rilevato al boot: maxReady=false, campi batteria a 0.
+IMPORTANTE: VDD del chip deve collegarsi direttamente ai terminali
+  della cella, PRIMA di qualunque charge controller (es. CN3791) o
+  BMS — altrimenti impedenza di sorgente falsa la lettura VCELL.
+Hibernate disabilitato al boot (HIBRT=0x0000) per sample continuo
+  a 250ms. Consumo active mode: 23µA (trascurabile su cella LiPo).
 
 ## RS485 → fototrappola (TX)
 
@@ -97,8 +102,6 @@ Indirizzo: 0x3C (alcuni breakout 0x3D)
 Libreria: Adafruit_SSD1306 + Adafruit_GFX
 Layout: titolo+nodeId / Batt V / SOC% / rate %/h / TX-Err / uptime
 Aggiornamento: ad ogni ciclo TX (5s).
-I2C scanner al boot (scanI2C) stampa tutti gli indirizzi trovati
-  per diagnostica rapida.
 
 ---
 

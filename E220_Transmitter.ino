@@ -184,23 +184,6 @@ void aesCtr(uint8_t* data, size_t len, uint32_t nonce) {
 static Adafruit_MAX17048 maxlipo;
 static bool maxReady = false;
 
-// Dump completo registri MAX17048 — diagnostica
-void dumpMaxRegisters() {
-    const uint8_t regs[]   = {0x02, 0x04, 0x06, 0x08, 0x0A,
-                              0x0C, 0x14, 0x16, 0x18, 0x1A};
-    const char *names[]    = {"VCELL", "SOC", "MODE", "VERSION", "HIBRT",
-                              "CONFIG", "VALRT", "CRATE", "VRESET/ID", "STATUS"};
-    Serial.println("[MAX17048] dump registri:");
-    for (size_t i = 0; i < sizeof(regs); i++) {
-        Wire.beginTransmission(0x36);
-        Wire.write(regs[i]);
-        if (Wire.endTransmission(false) != 0) continue;
-        Wire.requestFrom((uint8_t)0x36, (uint8_t)2);
-        uint16_t v = ((uint16_t)Wire.read() << 8) | Wire.read();
-        Serial.printf("  0x%02X %-10s = 0x%04X\n", regs[i], names[i], v);
-    }
-}
-
 // Disabilita hibernate scrivendo HIBRT=0x0000.
 // HibThr=0 → chip non entra mai in hibernate (CRATE non può essere
 // < 0%/hr in valore assoluto). Resta in active mode (sample 250ms).
@@ -209,20 +192,6 @@ void maxDisableHibernate() {
     Wire.write(0x0A);          // HIBRT
     Wire.write(0x00); Wire.write(0x00);
     Wire.endTransmission();
-}
-
-// I2C scanner — diagnostica al boot
-void scanI2C() {
-    Serial.println("[I2C] scan bus:");
-    int found = 0;
-    for (uint8_t addr = 1; addr < 127; addr++) {
-        Wire.beginTransmission(addr);
-        if (Wire.endTransmission() == 0) {
-            Serial.printf("  0x%02X\n", addr);
-            found++;
-        }
-    }
-    Serial.printf("[I2C] %d device trovati\n", found);
 }
 
 // ╔═══════════════════════════════════════════════════════════════════════════╗
@@ -343,19 +312,12 @@ void setup() {
 
     Wire.begin(PIN_SDA, PIN_SCL);
     delay(100);
-    scanI2C();
 
     if (maxlipo.begin(&Wire)) {
         maxReady = true;
-        Serial.printf("[OK] MAX17048 chip=0x%04X ver=0x%04X\n",
-                      maxlipo.getChipID(), maxlipo.getICversion());
-        // POR via software: forza ricampionamento VCELL (default reg = stale
-        // dopo certi avvii). Include quick-start integrato dal chip.
-        maxlipo.reset();
-        delay(500);   // 175ms POR debounce + margine ModelGauge
         maxDisableHibernate();
-        delay(1100);  // 4 sample (250ms × 4) in active mode per riempire l'averaging
-        dumpMaxRegisters();
+        Serial.printf("[OK] MAX17048 V=%.3fV SOC=%.1f%%\n",
+                      maxlipo.cellVoltage(), maxlipo.cellPercent());
     } else {
         Serial.println("[WARN] MAX17048 non trovato (I2C 0x36)");
     }
